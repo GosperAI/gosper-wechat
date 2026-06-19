@@ -1,6 +1,6 @@
 # Gosper OpenClaw WeChat
 
-`Gosper/openclaw-wechat` 是面向 Gosper 的 OpenClaw 微信 transport 插件包。
+`GosperAI/openclaw-wechat` 是面向 Gosper 的 OpenClaw 微信 transport 插件包。
 
 它使用 OpenClaw/iLink 的微信 transport API：
 
