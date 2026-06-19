@@ -25,7 +25,7 @@
 
 | 项 | 要求 |
 | --- | --- |
-| Gosper 生产地址 | 公网 HTTPS，例如 `https://gosper-ashen.vercel.app`。 |
+| Gosper 生产地址 | 默认使用公开生产地址 `https://gosper-ashen.vercel.app`，不需要用户配置。自托管 Gosper 时才需要覆盖。 |
 | Bridge 公网地址 | 公网 HTTPS，例如 `https://wechat-bridge.example.com`。 |
 | 常驻 host | 推荐直接使用 OpenClaw 所在机器；Fly、Railway、Render、ECS、VM 也可以。不要使用 Vercel Function。 |
 | OpenClaw/iLink 访问能力 | 默认 iLink 地址是 `https://ilinkai.weixin.qq.com`。 |
@@ -52,7 +52,6 @@ npm test
 
 ```bash
 npm run quickstart -- \
-  --gosper-base-url https://gosper-ashen.vercel.app \
   --bridge-base-url https://wechat-bridge.example.com
 ```
 
@@ -66,7 +65,6 @@ npm run quickstart -- \
 
 ```bash
 npm run quickstart -- \
-  --gosper-base-url https://gosper-ashen.vercel.app \
   --bridge-base-url https://wechat-bridge.example.com \
   --dry-run
 ```
@@ -75,7 +73,6 @@ npm run quickstart -- \
 
 ```bash
 npm run quickstart -- \
-  --gosper-base-url https://gosper-ashen.vercel.app \
   --bridge-base-url https://wechat-bridge.example.com \
   --no-start
 ```
@@ -84,9 +81,14 @@ npm run quickstart -- \
 
 ```bash
 npm run quickstart -- \
-  --gosper-base-url https://gosper-ashen.vercel.app \
   --bridge-base-url https://wechat-bridge.example.com \
   --force
+```
+
+如果你不是连接 Gosper 公开生产环境，而是连接自托管 Gosper，再额外传：
+
+```bash
+--gosper-base-url https://your-gosper.example.com
 ```
 
 ## 5. 手动生成配置
@@ -95,7 +97,6 @@ npm run quickstart -- \
 
 ```bash
 node bin/gosper-openclaw-wechat.mjs env \
-  --gosper-base-url https://gosper-ashen.vercel.app \
   --bridge-base-url https://wechat-bridge.example.com
 ```
 
@@ -117,7 +118,6 @@ OPENCLAW_WECHAT_LONG_POLL_TIMEOUT_MS=35000
 GOSPER_WECHAT_TOOL_BASE_URL=https://wechat-bridge.example.com
 GOSPER_WECHAT_TOOL_TOKEN=<same as OPENCLAW_WECHAT_BRIDGE_TOKEN>
 GOSPER_WECHAT_TRIGGER_SECRET=<same as OPENCLAW_WECHAT_GOSPER_TRIGGER_SECRET>
-GOSPER_APP_BASE_URL=https://gosper-ashen.vercel.app
 ```
 
 不要提交这些 secret。
@@ -196,7 +196,6 @@ node bin/gosper-openclaw-wechat.mjs start
 GOSPER_WECHAT_TOOL_BASE_URL=https://wechat-bridge.example.com
 GOSPER_WECHAT_TOOL_TOKEN=<same as OPENCLAW_WECHAT_BRIDGE_TOKEN>
 GOSPER_WECHAT_TRIGGER_SECRET=<same as OPENCLAW_WECHAT_GOSPER_TRIGGER_SECRET>
-GOSPER_APP_BASE_URL=https://gosper-ashen.vercel.app
 ```
 
 使用 Vercel CLI 时：
@@ -205,7 +204,6 @@ GOSPER_APP_BASE_URL=https://gosper-ashen.vercel.app
 vercel env add GOSPER_WECHAT_TOOL_BASE_URL production
 vercel env add GOSPER_WECHAT_TOOL_TOKEN production
 vercel env add GOSPER_WECHAT_TRIGGER_SECRET production
-vercel env add GOSPER_APP_BASE_URL production
 ```
 
 重新部署 Gosper：
@@ -284,7 +282,7 @@ node bin/gosper-openclaw-wechat.mjs start --dry-run
 ```bash
 npm run wechat:probe -- \
   --bridge-base-url "$GOSPER_WECHAT_TOOL_BASE_URL" \
-  --callback-base-url "$GOSPER_APP_BASE_URL" \
+  --callback-base-url https://gosper-ashen.vercel.app \
   --show-qr \
   --wait-connected \
   --send-after-connected \
@@ -357,7 +355,6 @@ GOSPER_WECHAT_TOOL_BASE_URL=https://wechat-bridge.example.com/v1/wechat/tools/ex
 
 ```bash
 npm run quickstart -- \
-  --gosper-base-url https://gosper-ashen.vercel.app \
   --bridge-base-url https://wechat-bridge.example.com
 ```
 

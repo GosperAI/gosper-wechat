@@ -48,7 +48,6 @@
         {
           "rootPath": "plugins.entries.gosper-openclaw-wechat.config",
           "required": [
-            "gosperBaseUrl",
             "bridgeBaseUrl"
           ]
         }
@@ -86,7 +85,7 @@
       "placeholder": "https://wechat-bridge.example.com"
     },
     "gosperBaseUrl": {
-      "label": "Gosper public URL",
+      "label": "Self-hosted Gosper public URL",
       "placeholder": "https://gosper.example.com"
     },
     "bridgeToken": {

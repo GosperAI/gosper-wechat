@@ -15,9 +15,10 @@
 
 ```bash
 gosper-openclaw-wechat env \
-  --gosper-base-url https://gosper-ashen.vercel.app \
   --bridge-base-url https://wechat-bridge.example.com
 ```
+
+Gosper 公开生产地址是默认值，不需要配置。自托管 Gosper 时才额外传 `--gosper-base-url https://your-gosper.example.com`。
 
 ## Bridge host env
 
@@ -36,7 +37,6 @@ OPENCLAW_WECHAT_ILINK_BASE_URL=https://ilinkai.weixin.qq.com
 GOSPER_WECHAT_TOOL_BASE_URL=https://wechat-bridge.example.com
 GOSPER_WECHAT_TOOL_TOKEN=<same as OPENCLAW_WECHAT_BRIDGE_TOKEN>
 GOSPER_WECHAT_TRIGGER_SECRET=<same as OPENCLAW_WECHAT_GOSPER_TRIGGER_SECRET>
-GOSPER_APP_BASE_URL=https://gosper-ashen.vercel.app
 ```
 
 ## 不要配置 OpenClaw channel

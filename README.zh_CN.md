@@ -13,7 +13,6 @@ git clone https://github.com/GosperAI/openclaw-wechat.git
 cd openclaw-wechat
 npm install
 npm run quickstart -- \
-  --gosper-base-url https://gosper-ashen.vercel.app \
   --bridge-base-url https://wechat-bridge.example.com
 ```
 
@@ -25,7 +24,7 @@ npm run quickstart -- \
 
 ## 适合谁
 
-- 已经有 Gosper 生产地址的团队。
+- 使用 Gosper 公开生产地址的团队。
 - 已经能访问 OpenClaw/iLink 微信 transport API 的团队。
 - 希望用户在 Gosper 页面扫码绑定微信，并通过微信和 Gosper Supervisor 交互。
 - 希望把微信 bridge 直接部署在 OpenClaw 所在常驻机器上。
@@ -49,17 +48,17 @@ npm install
 
 ```bash
 npm run quickstart -- \
-  --gosper-base-url https://gosper-ashen.vercel.app \
   --bridge-base-url https://wechat-bridge.example.com
 ```
 
 这会写入 bridge host `.env`，并输出一段 `Gosper Vercel env`。
 
+Gosper 公开生产地址是内置默认值，不需要配置。只有自托管 Gosper 时才传 `--gosper-base-url`。
+
 如果只想预览，不写文件、不启动 Docker：
 
 ```bash
 npm run quickstart -- \
-  --gosper-base-url https://gosper-ashen.vercel.app \
   --bridge-base-url https://wechat-bridge.example.com \
   --dry-run
 ```
@@ -68,7 +67,6 @@ npm run quickstart -- \
 
 ```bash
 npm run quickstart -- \
-  --gosper-base-url https://gosper-ashen.vercel.app \
   --bridge-base-url https://wechat-bridge.example.com \
   --no-start
 ```
@@ -119,7 +117,6 @@ docker compose -f deploy/compose.yaml --env-file .env up -d --build
 GOSPER_WECHAT_TOOL_BASE_URL=https://wechat-bridge.example.com
 GOSPER_WECHAT_TOOL_TOKEN=<same as OPENCLAW_WECHAT_BRIDGE_TOKEN>
 GOSPER_WECHAT_TRIGGER_SECRET=<same as OPENCLAW_WECHAT_GOSPER_TRIGGER_SECRET>
-GOSPER_APP_BASE_URL=https://gosper-ashen.vercel.app
 ```
 
 设置后重新部署 Gosper。
@@ -157,7 +154,6 @@ curl -sS https://wechat-bridge.example.com/healthz
 
 ```bash
 gosper-openclaw-wechat quickstart \
-  --gosper-base-url https://gosper-ashen.vercel.app \
   --bridge-base-url https://wechat-bridge.example.com
 ```
 
@@ -165,8 +161,15 @@ gosper-openclaw-wechat quickstart \
 
 ```bash
 gosper-openclaw-wechat env \
-  --gosper-base-url https://gosper-ashen.vercel.app \
   --bridge-base-url https://wechat-bridge.example.com
+```
+
+自托管 Gosper 时覆盖默认生产地址：
+
+```bash
+gosper-openclaw-wechat quickstart \
+  --bridge-base-url https://wechat-bridge.example.com \
+  --gosper-base-url https://your-gosper.example.com
 ```
 
 诊断 bridge host env：

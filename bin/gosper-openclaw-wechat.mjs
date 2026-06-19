@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 const args = process.argv.slice(2);
 const command = args[0] ?? "help";
 const commandArgs = args.slice(1);
+const defaultGosperBaseUrl = "https://gosper-ashen.vercel.app";
 
 switch (command) {
   case "quickstart":
@@ -179,15 +180,15 @@ function findPackageRoot() {
 }
 
 function buildGeneratedEnv(inputArgs, commandName) {
-  const gosperBaseUrl = readOption(inputArgs, "gosper-base-url");
+  const gosperBaseUrl =
+    readOption(inputArgs, "gosper-base-url") ?? defaultGosperBaseUrl;
   const bridgeBaseUrl = readOption(inputArgs, "bridge-base-url");
   const ilinkBaseUrl =
     readOption(inputArgs, "ilink-base-url") ?? "https://ilinkai.weixin.qq.com";
 
-  if (!gosperBaseUrl || !bridgeBaseUrl) {
+  if (!bridgeBaseUrl) {
     process.stderr.write(
-      `${commandName} requires --gosper-base-url and --bridge-base-url.\n\n` +
-        helpText(),
+      `${commandName} requires --bridge-base-url.\n\n` + helpText(),
     );
     process.exit(2);
   }
@@ -215,7 +216,6 @@ OPENCLAW_WECHAT_LONG_POLL_TIMEOUT_MS=35000
 GOSPER_WECHAT_TOOL_BASE_URL=${normalizedBridgeBaseUrl}
 GOSPER_WECHAT_TOOL_TOKEN=${bridgeToken}
 GOSPER_WECHAT_TRIGGER_SECRET=${triggerSecret}
-GOSPER_APP_BASE_URL=${normalizedGosperBaseUrl}
 `
   };
 }
@@ -251,8 +251,8 @@ function isHttpsOrigin(value) {
 
 function helpText() {
   return `Usage:
-  gosper-openclaw-wechat quickstart --gosper-base-url <url> --bridge-base-url <url>
-  gosper-openclaw-wechat env --gosper-base-url <url> --bridge-base-url <url>
+  gosper-openclaw-wechat quickstart --bridge-base-url <url>
+  gosper-openclaw-wechat env --bridge-base-url <url>
   gosper-openclaw-wechat doctor [--json]
   gosper-openclaw-wechat start [bridge options]
 
@@ -267,6 +267,9 @@ Quickstart options:
   --no-start    Write .env and print Gosper env, but do not run Docker.
   --force       Overwrite an existing .env file.
   --env-file    Bridge env file path relative to this package. Defaults to .env.
+  --gosper-base-url
+               Optional. Override public Gosper production URL for self-hosted
+               Gosper deployments. Defaults to ${defaultGosperBaseUrl}.
 
 Notes:
   This package is an OpenClaw plugin package, but it does not register

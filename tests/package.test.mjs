@@ -38,16 +38,28 @@ describe("openclaw-wechat package", () => {
     const { stdout } = await execFileAsync("node", [
       "bin/gosper-openclaw-wechat.mjs",
       "env",
-      "--gosper-base-url",
-      "https://gosper.example.com",
       "--bridge-base-url",
       "https://wechat-bridge.example.com"
     ]);
 
     expect(stdout).toContain("OPENCLAW_WECHAT_BRIDGE_TOKEN=");
-    expect(stdout).toContain("OPENCLAW_WECHAT_GOSPER_BASE_URL=https://gosper.example.com");
+    expect(stdout).toContain("OPENCLAW_WECHAT_GOSPER_BASE_URL=https://gosper-ashen.vercel.app");
     expect(stdout).toContain("GOSPER_WECHAT_TOOL_BASE_URL=https://wechat-bridge.example.com");
     expect(stdout).toContain("GOSPER_WECHAT_TRIGGER_SECRET=");
+    expect(stdout).not.toContain("GOSPER_APP_BASE_URL=");
+  });
+
+  it("allows self-hosted Gosper to override the public default", async () => {
+    const { stdout } = await execFileAsync("node", [
+      "bin/gosper-openclaw-wechat.mjs",
+      "env",
+      "--bridge-base-url",
+      "https://wechat-bridge.example.com",
+      "--gosper-base-url",
+      "https://gosper.example.com"
+    ]);
+
+    expect(stdout).toContain("OPENCLAW_WECHAT_GOSPER_BASE_URL=https://gosper.example.com");
   });
 
   it("ships a real Chinese usage guide with setup and verification steps", async () => {
@@ -56,6 +68,7 @@ describe("openclaw-wechat package", () => {
 
     expect(readme).toContain("五分钟快速开始");
     expect(readme).toContain("不需要安装 OpenClaw CLI");
+    expect(readme).toContain("Gosper 公开生产地址是内置默认值，不需要配置");
     expect(readme).toContain("完整使用手册");
     expect(readme).toContain("推荐把 bridge 部署在 OpenClaw 所在的常驻机器上");
     expect(usage).toContain("一键启动，不安装 OpenClaw");
@@ -71,8 +84,6 @@ describe("openclaw-wechat package", () => {
     const { stdout } = await execFileAsync("node", [
       "bin/gosper-openclaw-wechat.mjs",
       "quickstart",
-      "--gosper-base-url",
-      "https://gosper.example.com",
       "--bridge-base-url",
       "https://wechat-bridge.example.com",
       "--dry-run"
@@ -80,6 +91,7 @@ describe("openclaw-wechat package", () => {
 
     expect(stdout).toContain("# Would write");
     expect(stdout).toContain("OPENCLAW_WECHAT_BRIDGE_TOKEN=");
+    expect(stdout).toContain("OPENCLAW_WECHAT_GOSPER_BASE_URL=https://gosper-ashen.vercel.app");
     expect(stdout).toContain("GOSPER_WECHAT_TOOL_BASE_URL=https://wechat-bridge.example.com");
     expect(stdout).toContain("docker compose");
   });
