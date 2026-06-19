@@ -1,0 +1,61 @@
+{
+  "name": "@gosper/openclaw-wechat",
+  "version": "0.1.0",
+  "description": "OpenClaw WeChat transport bridge for Gosper",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "gosper-openclaw-wechat": "bin/gosper-openclaw-wechat.mjs"
+  },
+  "files": [
+    "bin/",
+    "deploy/",
+    "docs/",
+    "src/",
+    "env.example",
+    "openclaw.plugin.json",
+    "README.md",
+    "README.zh_CN.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "bridge": "node src/openclaw-wechat-bridge.mjs",
+    "start": "node src/openclaw-wechat-bridge.mjs",
+    "env": "node bin/gosper-openclaw-wechat.mjs env",
+    "doctor": "node bin/gosper-openclaw-wechat.mjs doctor",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.8"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.24-beta.2"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "openclaw": {
+    "extensions": [
+      "./src/index.mjs"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.3.24-beta.2",
+      "minGatewayVersion": "2026.3.24-beta.2"
+    },
+    "install": {
+      "npmSpec": "@gosper/openclaw-wechat",
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.3.24-beta.2",
+      "allowInvalidConfigRecovery": true
+    }
+  }
+}

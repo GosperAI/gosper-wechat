@@ -1,0 +1,19 @@
+services:
+  openclaw-wechat:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "8787:8787"
+    env_file:
+      - ../.env
+    environment:
+      OPENCLAW_WECHAT_BRIDGE_STATE_PATH: /data/openclaw-wechat/state.json
+      OPENCLAW_WECHAT_BRIDGE_HOST: 0.0.0.0
+      OPENCLAW_WECHAT_BRIDGE_PORT: 8787
+    volumes:
+      - openclaw-wechat-state:/data/openclaw-wechat
+    restart: unless-stopped
+
+volumes:
+  openclaw-wechat-state:
