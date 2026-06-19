@@ -1,23 +1,21 @@
-# Gosper OpenClaw WeChat 使用说明
+# Gosper WeChat 使用说明
 
-本文说明如何从零部署 `GosperAI/openclaw-wechat`，让用户可以在 Gosper 页面扫码绑定微信，并通过微信和 Gosper Supervisor 交互。
-
-主路径不需要安装 OpenClaw CLI。你可以直接在 OpenClaw 所在机器上运行 `quickstart`，让它生成 `.env` 并启动 Docker Compose。
+本文说明如何从零部署 `GosperAI/gosper-wechat`，让用户可以在 Gosper 页面扫码绑定微信，并通过微信和 Gosper Supervisor 交互。
 
 ## 1. 最终链路
 
 ```text
 微信用户
-  -> openclaw-wechat 常驻 bridge
+  -> gosper-wechat 常驻 bridge
   -> Gosper /api/tools/triggers/wechat
   -> Gosper Supervisor
   -> Gosper WeChat tool facade
-  -> openclaw-wechat /v1/wechat/tools/execute
+  -> gosper-wechat /v1/wechat/tools/execute
   -> iLink sendmessage
   -> 微信用户
 ```
 
-这个项目只使用 OpenClaw/iLink transport，不使用 OpenClaw channel runtime，不经过 OpenClaw LLM 层。
+`gosper-wechat` 是一个独立常驻服务，只负责微信 transport：二维码登录、轮询收消息、发送消息、保存 bot token/cursor/context token。
 
 ## 2. 前置条件
 
@@ -26,17 +24,17 @@
 | 项 | 要求 |
 | --- | --- |
 | Gosper 生产地址 | 默认使用公开生产地址 `https://gosper-ashen.vercel.app`，不需要用户配置。自托管 Gosper 时才需要覆盖。 |
-| Bridge 公网地址 | 公网 HTTPS，例如 `https://wechat-bridge.example.com`。 |
-| 常驻 host | 推荐直接使用 OpenClaw 所在机器；Fly、Railway、Render、ECS、VM 也可以。不要使用 Vercel Function。 |
-| OpenClaw/iLink 访问能力 | 默认 iLink 地址是 `https://ilinkai.weixin.qq.com`。 |
+| Bridge 公网地址 | 公网 HTTPS origin，例如 `https://wechat-bridge.example.com`。 |
+| 常驻 host | Fly、Railway、Render、ECS、VM、自己的服务器都可以。不要使用 Vercel Function 跑长轮询。 |
+| iLink 访问能力 | 默认 iLink 地址是 `https://ilinkai.weixin.qq.com`。 |
 | Node.js | 本地运行需要 Node.js 20+。 |
 | Docker | 容器部署时需要 Docker 和 Docker Compose。 |
 
 ## 3. 克隆项目
 
 ```bash
-git clone https://github.com/GosperAI/openclaw-wechat.git
-cd openclaw-wechat
+git clone https://github.com/GosperAI/gosper-wechat.git
+cd gosper-wechat
 npm install
 ```
 
@@ -46,7 +44,7 @@ npm install
 npm test
 ```
 
-## 4. 一键启动，不安装 OpenClaw
+## 4. 一键启动
 
 运行：
 
@@ -96,7 +94,7 @@ npm run quickstart -- \
 运行：
 
 ```bash
-node bin/gosper-openclaw-wechat.mjs env \
+node bin/gosper-wechat.mjs env \
   --bridge-base-url https://wechat-bridge.example.com
 ```
 
@@ -104,36 +102,33 @@ node bin/gosper-openclaw-wechat.mjs env \
 
 ```env
 # Bridge host env
-OPENCLAW_WECHAT_BRIDGE_TOKEN=<generated>
-OPENCLAW_WECHAT_GOSPER_BASE_URL=https://gosper-ashen.vercel.app
-OPENCLAW_WECHAT_GOSPER_TRIGGER_SECRET=<generated>
-OPENCLAW_WECHAT_BRIDGE_STATE_PATH=/data/openclaw-wechat/state.json
-OPENCLAW_WECHAT_BRIDGE_STATE_SECRET=<generated>
-OPENCLAW_WECHAT_ILINK_BASE_URL=https://ilinkai.weixin.qq.com
-OPENCLAW_WECHAT_BOT_TYPE=3
-OPENCLAW_WECHAT_POLL_INTERVAL_MS=2000
-OPENCLAW_WECHAT_LONG_POLL_TIMEOUT_MS=35000
+GOSPER_WECHAT_TOOL_TOKEN=<generated>
+GOSPER_APP_BASE_URL=https://gosper-ashen.vercel.app
+GOSPER_WECHAT_TRIGGER_SECRET=<generated>
+GOSPER_WECHAT_BRIDGE_STATE_PATH=/data/gosper-wechat/state.json
+GOSPER_WECHAT_BRIDGE_STATE_SECRET=<generated>
+GOSPER_WECHAT_ILINK_BASE_URL=https://ilinkai.weixin.qq.com
+GOSPER_WECHAT_BOT_TYPE=3
+GOSPER_WECHAT_POLL_INTERVAL_MS=2000
+GOSPER_WECHAT_LONG_POLL_TIMEOUT_MS=35000
 
 # Gosper Vercel env
 GOSPER_WECHAT_TOOL_BASE_URL=https://wechat-bridge.example.com
-GOSPER_WECHAT_TOOL_TOKEN=<same as OPENCLAW_WECHAT_BRIDGE_TOKEN>
-GOSPER_WECHAT_TRIGGER_SECRET=<same as OPENCLAW_WECHAT_GOSPER_TRIGGER_SECRET>
+GOSPER_WECHAT_TOOL_TOKEN=<same as bridge>
+GOSPER_WECHAT_TRIGGER_SECRET=<same as bridge>
 ```
 
 不要提交这些 secret。
 
-## 6. 手动部署 bridge
+## 6. 部署 bridge
 
-推荐部署位置是 OpenClaw 所在机器。
+推荐部署在支持常驻进程和持久化磁盘的主机上。
 
 原因：
 
-- 这台机器通常已经具备 OpenClaw/iLink transport 的网络环境；
 - bridge 需要常驻轮询 iLink `getupdates`；
 - bridge 需要持久化保存 bot token、cursor 和 context token；
 - Gosper 在 Vercel 上只需要被回调，不需要承担常驻连接。
-
-注意：bridge 部署在 OpenClaw 机器上，并不表示它会进入 OpenClaw channel runtime。它仍然是一个旁路常驻服务，负责把微信 transport 转发给 Gosper。
 
 ### 6.1 Docker Compose 部署
 
@@ -143,7 +138,7 @@ GOSPER_WECHAT_TRIGGER_SECRET=<same as OPENCLAW_WECHAT_GOSPER_TRIGGER_SECRET>
 cp env.example .env
 ```
 
-把第 4 步输出的 `Bridge host env` 填到 `.env`。
+把第 5 步输出的 `Bridge host env` 填到 `.env`。
 
 启动：
 
@@ -154,7 +149,7 @@ docker compose -f deploy/compose.yaml --env-file .env up -d --build
 查看日志：
 
 ```bash
-docker compose -f deploy/compose.yaml logs -f openclaw-wechat
+docker compose -f deploy/compose.yaml logs -f gosper-wechat
 ```
 
 停止：
@@ -174,7 +169,7 @@ npm run bridge
 或者：
 
 ```bash
-node bin/gosper-openclaw-wechat.mjs start
+node bin/gosper-wechat.mjs start
 ```
 
 ### 6.3 生产部署要求
@@ -183,8 +178,8 @@ node bin/gosper-openclaw-wechat.mjs start
 
 - bridge 是常驻进程；
 - bridge public URL 是 HTTPS；
-- `/data/openclaw-wechat` 是持久化 volume；
-- `OPENCLAW_WECHAT_BRIDGE_STATE_SECRET` 已配置；
+- `/data/gosper-wechat` 是持久化 volume；
+- `GOSPER_WECHAT_BRIDGE_STATE_SECRET` 已配置；
 - 不开启 plaintext state；
 - 不把 `.env` 提交到 Git。
 
@@ -194,8 +189,8 @@ node bin/gosper-openclaw-wechat.mjs start
 
 ```env
 GOSPER_WECHAT_TOOL_BASE_URL=https://wechat-bridge.example.com
-GOSPER_WECHAT_TOOL_TOKEN=<same as OPENCLAW_WECHAT_BRIDGE_TOKEN>
-GOSPER_WECHAT_TRIGGER_SECRET=<same as OPENCLAW_WECHAT_GOSPER_TRIGGER_SECRET>
+GOSPER_WECHAT_TOOL_TOKEN=<same as bridge>
+GOSPER_WECHAT_TRIGGER_SECRET=<same as bridge>
 ```
 
 使用 Vercel CLI 时：
@@ -227,8 +222,8 @@ curl -sS https://wechat-bridge.example.com/healthz
 ```json
 {
   "ok": true,
-  "mode": "external_openclaw_transport",
-  "channel": "openclaw-weixin",
+  "mode": "gosper_wechat_transport",
+  "transport": "ilink-wechat",
   "accounts": 0,
   "stateEncrypted": true
 }
@@ -237,18 +232,18 @@ curl -sS https://wechat-bridge.example.com/healthz
 本机诊断：
 
 ```bash
-node bin/gosper-openclaw-wechat.mjs doctor
-node bin/gosper-openclaw-wechat.mjs doctor --json
+node bin/gosper-wechat.mjs doctor
+node bin/gosper-wechat.mjs doctor --json
 ```
 
 查看 runtime contract：
 
 ```bash
-OPENCLAW_WECHAT_BRIDGE_TOKEN=bridge-token \
-OPENCLAW_WECHAT_GOSPER_BASE_URL=https://gosper-ashen.vercel.app \
-OPENCLAW_WECHAT_GOSPER_TRIGGER_SECRET=trigger-secret \
-OPENCLAW_WECHAT_BRIDGE_STATE_SECRET=state-secret \
-node bin/gosper-openclaw-wechat.mjs start --dry-run
+GOSPER_WECHAT_TOOL_TOKEN=bridge-token \
+GOSPER_APP_BASE_URL=https://gosper-ashen.vercel.app \
+GOSPER_WECHAT_TRIGGER_SECRET=trigger-secret \
+GOSPER_WECHAT_BRIDGE_STATE_SECRET=state-secret \
+node bin/gosper-wechat.mjs start --dry-run
 ```
 
 ## 9. 用户绑定流程
@@ -299,33 +294,9 @@ supervisorInteraction.supervisorStatus: replied
 supervisorInteraction.supervisorDeliveryOk: true
 ```
 
-## 11. OpenClaw 插件安装，可选
+## 11. 常见问题
 
-只启动 bridge 不需要安装 OpenClaw CLI。本节只用于希望 OpenClaw 控制面能识别这个 package 的场景。
-
-在 OpenClaw 机器上，从本地 checkout 安装：
-
-```bash
-openclaw plugins install .
-```
-
-或发布到 npm 后安装：
-
-```bash
-openclaw plugins install @gosper/openclaw-wechat
-```
-
-注意：
-
-- 这个 package 是 native OpenClaw plugin package。
-- 它有 `openclaw.plugin.json` 和 `package.json#openclaw`。
-- 它没有 `channels` 字段。
-- 不需要执行 `openclaw channels login --channel openclaw-weixin`。
-- 安装插件不等于启动 bridge；bridge 仍然需要作为常驻服务运行。
-
-## 12. 常见问题
-
-### 12.1 `GOSPER_WECHAT_TOOL_BASE_URL` 填什么？
+### 11.1 `GOSPER_WECHAT_TOOL_BASE_URL` 填什么？
 
 填 bridge 的公网 HTTPS origin，不要带 path。
 
@@ -341,47 +312,33 @@ GOSPER_WECHAT_TOOL_BASE_URL=https://wechat-bridge.example.com
 GOSPER_WECHAT_TOOL_BASE_URL=https://wechat-bridge.example.com/v1/wechat/tools/execute
 ```
 
-### 12.2 token 从哪里来？
+### 11.2 token 从哪里来？
 
 自己生成。推荐用 CLI 的 `env` 命令生成。
 
-`OPENCLAW_WECHAT_BRIDGE_TOKEN` 必须等于 `GOSPER_WECHAT_TOOL_TOKEN`。
+`Bridge host env` 和 `Gosper Vercel env` 里的下面两项必须完全一致：
 
-`OPENCLAW_WECHAT_GOSPER_TRIGGER_SECRET` 必须等于 `GOSPER_WECHAT_TRIGGER_SECRET`。
-
-### 12.3 可以不安装 OpenClaw 吗？
-
-可以。推荐主路径就是不安装 OpenClaw CLI，直接运行：
-
-```bash
-npm run quickstart -- \
-  --bridge-base-url https://wechat-bridge.example.com
+```env
+GOSPER_WECHAT_TOOL_TOKEN=<same value>
+GOSPER_WECHAT_TRIGGER_SECRET=<same value>
 ```
 
-它会生成 `.env` 并启动 Docker Compose。
-
-### 12.4 可以把 bridge 跑在 Vercel Function 吗？
+### 11.3 可以把 bridge 跑在 Vercel Function 吗？
 
 不建议。bridge 需要常驻轮询 iLink `getupdates`，应该跑在支持常驻进程的 host 上。
 
-### 12.5 二维码过期怎么办？
+### 11.4 二维码过期怎么办？
 
 重新创建 bind session，让用户扫描新二维码。不要复用旧截图。
 
-### 12.6 微信没有收到回复怎么办？
+### 11.5 微信没有收到回复怎么办？
 
 按顺序检查：
 
 1. `curl https://wechat-bridge.example.com/healthz` 是否 `ok: true`。
 2. `stateEncrypted` 是否 `true`。
 3. Gosper Vercel env 是否配置完整。
-4. 两组 shared secret 是否完全一致。
+4. 两个 shared secret 是否完全一致。
 5. bridge 日志里是否有 iLink `getupdates` 错误。
 6. Gosper trigger 是否返回 `supervisor.status: replied`。
 7. 最近微信会话是否有可用 `context_token`。
-
-### 12.7 它和 `@tencent-weixin/openclaw-weixin` 是什么关系？
-
-`@tencent-weixin/openclaw-weixin` 是 OpenClaw channel plugin。
-
-`@gosper/openclaw-wechat` 是 Gosper transport bridge plugin package。它只用 iLink transport，不走 OpenClaw channel runtime，不走 OpenClaw LLM。

@@ -104,18 +104,18 @@ function doctor(inputArgs) {
   const json = inputArgs.includes("--json");
   const env = process.env;
   const required = [
-    "OPENCLAW_WECHAT_BRIDGE_TOKEN",
-    "OPENCLAW_WECHAT_GOSPER_BASE_URL",
-    "OPENCLAW_WECHAT_GOSPER_TRIGGER_SECRET",
-    "OPENCLAW_WECHAT_BRIDGE_STATE_SECRET"
+    "GOSPER_WECHAT_TOOL_TOKEN",
+    "GOSPER_APP_BASE_URL",
+    "GOSPER_WECHAT_TRIGGER_SECRET",
+    "GOSPER_WECHAT_BRIDGE_STATE_SECRET"
   ];
   const missing = required.filter((name) => !envValue(env[name]));
   const warnings = [];
 
-  const gosperBaseUrl = envValue(env.OPENCLAW_WECHAT_GOSPER_BASE_URL);
+  const gosperBaseUrl = envValue(env.GOSPER_APP_BASE_URL);
   if (gosperBaseUrl && !isHttpsOrigin(gosperBaseUrl)) {
     warnings.push(
-      "OPENCLAW_WECHAT_GOSPER_BASE_URL should be a public https origin in production.",
+      "GOSPER_APP_BASE_URL should be a public https origin in production.",
     );
   }
 
@@ -129,7 +129,7 @@ function doctor(inputArgs) {
     missing,
     warnings,
     bridgeScriptFound: Boolean(scriptPath),
-    mode: "external_openclaw_transport"
+    mode: "gosper_wechat_transport"
   };
 
   if (json) {
@@ -152,7 +152,7 @@ function doctor(inputArgs) {
 function startBridge(inputArgs) {
   const scriptPath = findBridgeScript();
   if (!scriptPath) {
-    process.stderr.write("Cannot find src/openclaw-wechat-bridge.mjs.\n");
+    process.stderr.write("Cannot find src/gosper-wechat-bridge.mjs.\n");
     process.exit(1);
   }
 
@@ -169,8 +169,8 @@ function startBridge(inputArgs) {
 function findBridgeScript() {
   const here = dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    resolve(here, "../src/openclaw-wechat-bridge.mjs"),
-    resolve(process.cwd(), "src/openclaw-wechat-bridge.mjs")
+    resolve(here, "../src/gosper-wechat-bridge.mjs"),
+    resolve(process.cwd(), "src/gosper-wechat-bridge.mjs")
   ];
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
@@ -202,15 +202,15 @@ function buildGeneratedEnv(inputArgs, commandName) {
 
   return {
     bridgeBlock: `# Bridge host env
-OPENCLAW_WECHAT_BRIDGE_TOKEN=${bridgeToken}
-OPENCLAW_WECHAT_GOSPER_BASE_URL=${normalizedGosperBaseUrl}
-OPENCLAW_WECHAT_GOSPER_TRIGGER_SECRET=${triggerSecret}
-OPENCLAW_WECHAT_BRIDGE_STATE_PATH=/data/openclaw-wechat/state.json
-OPENCLAW_WECHAT_BRIDGE_STATE_SECRET=${stateSecret}
-OPENCLAW_WECHAT_ILINK_BASE_URL=${normalizedIlinkBaseUrl}
-OPENCLAW_WECHAT_BOT_TYPE=3
-OPENCLAW_WECHAT_POLL_INTERVAL_MS=2000
-OPENCLAW_WECHAT_LONG_POLL_TIMEOUT_MS=35000
+GOSPER_WECHAT_TOOL_TOKEN=${bridgeToken}
+GOSPER_APP_BASE_URL=${normalizedGosperBaseUrl}
+GOSPER_WECHAT_TRIGGER_SECRET=${triggerSecret}
+GOSPER_WECHAT_BRIDGE_STATE_PATH=/data/gosper-wechat/state.json
+GOSPER_WECHAT_BRIDGE_STATE_SECRET=${stateSecret}
+GOSPER_WECHAT_ILINK_BASE_URL=${normalizedIlinkBaseUrl}
+GOSPER_WECHAT_BOT_TYPE=3
+GOSPER_WECHAT_POLL_INTERVAL_MS=2000
+GOSPER_WECHAT_LONG_POLL_TIMEOUT_MS=35000
 `,
     gosperBlock: `# Gosper Vercel env
 GOSPER_WECHAT_TOOL_BASE_URL=${normalizedBridgeBaseUrl}
@@ -251,15 +251,15 @@ function isHttpsOrigin(value) {
 
 function helpText() {
   return `Usage:
-  gosper-openclaw-wechat quickstart --bridge-base-url <url>
-  gosper-openclaw-wechat env --bridge-base-url <url>
-  gosper-openclaw-wechat doctor [--json]
-  gosper-openclaw-wechat start [bridge options]
+  gosper-wechat quickstart --bridge-base-url <url>
+  gosper-wechat env --bridge-base-url <url>
+  gosper-wechat doctor [--json]
+  gosper-wechat start [bridge options]
 
 Commands:
   quickstart Generate .env, print Gosper env, and start Docker Compose.
   env       Generate matching bridge-host and Gosper Vercel env blocks.
-  doctor    Check bridge-host env for the Gosper OpenClaw WeChat bridge.
+  doctor    Check bridge-host env for the Gosper WeChat bridge.
   start     Start the resident iLink transport bridge.
 
 Quickstart options:
@@ -272,8 +272,7 @@ Quickstart options:
                Gosper deployments. Defaults to ${defaultGosperBaseUrl}.
 
 Notes:
-  This package is an OpenClaw plugin package, but it does not register
-  an OpenClaw channel runtime. WeChat messages are sent to Gosper through
-  external_openclaw_transport.
+  Gosper WeChat is a standalone resident bridge. It uses iLink QR,
+  getupdates, and sendmessage APIs, then sends WeChat messages to Gosper.
 `;
 }

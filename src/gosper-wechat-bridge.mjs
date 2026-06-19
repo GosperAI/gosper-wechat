@@ -24,12 +24,12 @@ import {
   readStringValue as stringValue,
 } from "./lib/ops-values.mjs";
 
-const openClawWeixinChannel = "openclaw-weixin";
+const wechatTransport = "ilink-wechat";
 const defaultBridgeHost = "127.0.0.1";
 const defaultBridgePort = 8787;
 const defaultIlinkBaseUrl = "https://ilinkai.weixin.qq.com";
 const defaultBotType = "3";
-const defaultChannelVersion = "2.4.3";
+const defaultWechatClientVersion = "2.4.3";
 const defaultIlinkAppId = "bot";
 const defaultPollIntervalMs = 2_000;
 const defaultLongPollTimeoutMs = 35_000;
@@ -91,7 +91,7 @@ async function main() {
   });
   await store.load();
 
-  const bridge = new OpenClawWechatBridge({ config, store });
+  const bridge = new GosperWechatBridge({ config, store });
   await bridge.listen();
 
   process.on("SIGINT", () => bridge.close().finally(() => process.exit(0)));
@@ -143,37 +143,34 @@ function parseBridgeArgs(argv) {
 function readBridgeConfig(env, cli) {
   const { readEnv, readBool } = createOpsEnvReader(env);
   const host =
-    cli.host ?? readEnv("OPENCLAW_WECHAT_BRIDGE_HOST") ?? defaultBridgeHost;
+    cli.host ?? readEnv("GOSPER_WECHAT_BRIDGE_HOST") ?? defaultBridgeHost;
   const port = readNonNegativeIntegerValue(
-    cli.port ?? readEnv("OPENCLAW_WECHAT_BRIDGE_PORT") ?? readEnv("PORT"),
+    cli.port ?? readEnv("GOSPER_WECHAT_BRIDGE_PORT") ?? readEnv("PORT"),
     defaultBridgePort,
   );
   const bridgeToken =
     cli.bridgeToken ??
-    readEnv("OPENCLAW_WECHAT_BRIDGE_TOKEN") ??
     readEnv("GOSPER_WECHAT_TOOL_TOKEN");
   const gosperBaseUrl = normalizeOptionalBaseUrl(
     cli.gosperBaseUrl ??
-      readEnv("OPENCLAW_WECHAT_GOSPER_BASE_URL") ??
       readEnv("GOSPER_APP_BASE_URL") ??
       readEnv("GOSPER_PUBLIC_BASE_URL") ??
       readEnv("NEXT_PUBLIC_APP_URL"),
   );
   const triggerSecret =
     cli.triggerSecret ??
-    readEnv("OPENCLAW_WECHAT_GOSPER_TRIGGER_SECRET") ??
     readEnv("GOSPER_WECHAT_TRIGGER_SECRET");
   const ilinkBaseUrl =
     normalizeOptionalBaseUrl(
-      cli.ilinkBaseUrl ?? readEnv("OPENCLAW_WECHAT_ILINK_BASE_URL"),
+      cli.ilinkBaseUrl ?? readEnv("GOSPER_WECHAT_ILINK_BASE_URL"),
     ) ?? defaultIlinkBaseUrl;
   const statePath =
     cli.statePath ??
-    readEnv("OPENCLAW_WECHAT_BRIDGE_STATE_PATH") ??
-    join(homedir(), ".gosper", "openclaw-wechat-bridge", "state.json");
-  const stateSecret = readEnv("OPENCLAW_WECHAT_BRIDGE_STATE_SECRET");
+    readEnv("GOSPER_WECHAT_BRIDGE_STATE_PATH") ??
+    join(homedir(), ".gosper", "gosper-wechat-bridge", "state.json");
+  const stateSecret = readEnv("GOSPER_WECHAT_BRIDGE_STATE_SECRET");
   const allowPlaintextState = readBool(
-    "OPENCLAW_WECHAT_BRIDGE_ALLOW_PLAINTEXT_STATE",
+    "GOSPER_WECHAT_BRIDGE_ALLOW_PLAINTEXT_STATE",
   );
 
   return {
@@ -183,26 +180,26 @@ function readBridgeConfig(env, cli) {
     gosperBaseUrl,
     triggerSecret,
     ilinkBaseUrl,
-    botType: cli.botType ?? readEnv("OPENCLAW_WECHAT_BOT_TYPE") ?? defaultBotType,
+    botType: cli.botType ?? readEnv("GOSPER_WECHAT_BOT_TYPE") ?? defaultBotType,
     ilinkAppId:
-      readEnv("OPENCLAW_WECHAT_ILINK_APP_ID") ?? defaultIlinkAppId,
-    channelVersion:
-      readEnv("OPENCLAW_WECHAT_CHANNEL_VERSION") ?? defaultChannelVersion,
-    botAgent: readEnv("OPENCLAW_WECHAT_BOT_AGENT") ?? "GosperOpenClawBridge",
+      readEnv("GOSPER_WECHAT_ILINK_APP_ID") ?? defaultIlinkAppId,
+    wechatClientVersion:
+      readEnv("GOSPER_WECHAT_CLIENT_VERSION") ?? defaultWechatClientVersion,
+    botAgent: readEnv("GOSPER_WECHAT_BOT_AGENT") ?? "GosperWechatBridge",
     statePath,
     stateSecret,
     allowPlaintextState,
     pollIntervalMs: readPositiveIntegerValue(
-      cli.pollIntervalMs ?? readEnv("OPENCLAW_WECHAT_POLL_INTERVAL_MS"),
+      cli.pollIntervalMs ?? readEnv("GOSPER_WECHAT_POLL_INTERVAL_MS"),
       defaultPollIntervalMs,
     ),
     longPollTimeoutMs: readPositiveIntegerValue(
       cli.longPollTimeoutMs ??
-        readEnv("OPENCLAW_WECHAT_LONG_POLL_TIMEOUT_MS"),
+        readEnv("GOSPER_WECHAT_LONG_POLL_TIMEOUT_MS"),
       defaultLongPollTimeoutMs,
     ),
     apiTimeoutMs: readPositiveIntegerValue(
-      readEnv("OPENCLAW_WECHAT_API_TIMEOUT_MS"),
+      readEnv("GOSPER_WECHAT_API_TIMEOUT_MS"),
       defaultApiTimeoutMs,
     ),
   };
@@ -211,23 +208,19 @@ function readBridgeConfig(env, cli) {
 function validateBridgeConfig(config) {
   const missing = [];
   const invalid = [];
-  if (!config.bridgeToken) missing.push("OPENCLAW_WECHAT_BRIDGE_TOKEN or GOSPER_WECHAT_TOOL_TOKEN");
+  if (!config.bridgeToken) missing.push("GOSPER_WECHAT_TOOL_TOKEN");
   if (!config.gosperBaseUrl) {
     missing.push(
-      "OPENCLAW_WECHAT_GOSPER_BASE_URL or GOSPER_APP_BASE_URL or GOSPER_PUBLIC_BASE_URL or NEXT_PUBLIC_APP_URL",
+      "GOSPER_APP_BASE_URL or GOSPER_PUBLIC_BASE_URL or NEXT_PUBLIC_APP_URL",
     );
   }
-  if (!config.triggerSecret) {
-    missing.push(
-      "OPENCLAW_WECHAT_GOSPER_TRIGGER_SECRET or GOSPER_WECHAT_TRIGGER_SECRET",
-    );
-  }
-  validateHttpUrl(config.ilinkBaseUrl, "OPENCLAW_WECHAT_ILINK_BASE_URL", invalid);
+  if (!config.triggerSecret) missing.push("GOSPER_WECHAT_TRIGGER_SECRET");
+  validateHttpUrl(config.ilinkBaseUrl, "GOSPER_WECHAT_ILINK_BASE_URL", invalid);
   if (config.gosperBaseUrl) {
     validateHttpUrl(config.gosperBaseUrl, "Gosper callback base URL", invalid);
   }
   if (isProductionEnv() && !config.stateSecret && !config.allowPlaintextState) {
-    missing.push("OPENCLAW_WECHAT_BRIDGE_STATE_SECRET");
+    missing.push("GOSPER_WECHAT_BRIDGE_STATE_SECRET");
   }
   return {
     configured: missing.length === 0 && invalid.length === 0,
@@ -238,7 +231,7 @@ function validateBridgeConfig(config) {
 
 function describeBridgeConfig(config) {
   return {
-    mode: "external_openclaw_transport",
+    mode: "gosper_wechat_transport",
     listen: {
       host: config.host,
       port: config.port,
@@ -262,7 +255,8 @@ function bridgeContract() {
   return {
     provider: "wechat",
     tool: "WECHAT",
-    channel: openClawWeixinChannel,
+    mode: "gosper_wechat_transport",
+    transport: wechatTransport,
     executePath,
     operations: [
       "create_bind_session",
@@ -275,8 +269,7 @@ function bridgeContract() {
       message: "/api/tools/triggers/wechat",
       binding: "/api/tools/triggers/wechat/bind",
     },
-    openclawLlmLayer: "bypassed",
-    transport: [
+    transportApi: [
       "ilink/bot/get_bot_qrcode",
       "ilink/bot/get_qrcode_status",
       "ilink/bot/getupdates",
@@ -335,7 +328,7 @@ function defaultState() {
   };
 }
 
-class OpenClawWechatBridge {
+class GosperWechatBridge {
   constructor(input) {
     this.config = input.config;
     this.store = input.store;
@@ -362,8 +355,8 @@ class OpenClawWechatBridge {
     const baseUrl = `http://${this.config.host}:${port}`;
     process.stdout.write(
       JSON.stringify({
-        event: "openclaw_wechat_bridge.listening",
-        mode: "external_openclaw_transport",
+        event: "gosper_wechat_bridge.listening",
+        mode: "gosper_wechat_transport",
         host: this.config.host,
         port,
         baseUrl,
@@ -385,8 +378,8 @@ class OpenClawWechatBridge {
     if (req.method === "GET" && url.pathname === "/healthz") {
       writeJson(res, 200, {
         ok: true,
-        mode: "external_openclaw_transport",
-        channel: openClawWeixinChannel,
+        mode: "gosper_wechat_transport",
+        transport: wechatTransport,
         accounts: Object.keys(this.store.state.accounts).length,
         stateEncrypted: Boolean(this.store.stateSecret),
       });
@@ -455,7 +448,7 @@ class OpenClawWechatBridge {
     const triggerContext =
       asRecord(args.triggerContext) ??
       asRecord(args.trigger_context) ??
-      openClawContextFrom(context);
+      wechatContextFrom(context);
     const bindCallbackContext =
       asRecord(args.bindCallbackContext) ??
       asRecord(args.bind_callback_context) ??
@@ -567,7 +560,7 @@ class OpenClawWechatBridge {
     const next = {
       ...previous,
       accountId,
-      openclawAccountId: accountId,
+      wechatBotId: accountId,
       ilinkUserId: userId ?? stringValue(previous.ilinkUserId) ?? null,
       botToken: botToken ?? stringValue(previous.botToken) ?? null,
       baseUrl:
@@ -608,9 +601,9 @@ class OpenClawWechatBridge {
 
   async sendWechatMessage(args, operation) {
     const account = this.findDeliveryAccount(args);
-    if (!account) throw new Error("No connected OpenClaw Weixin account is available.");
+    if (!account) throw new Error("No connected WeChat account is available.");
     if (!stringValue(account.botToken)) {
-      throw new Error(`OpenClaw Weixin account ${account.accountId} is missing botToken.`);
+      throw new Error(`WeChat account ${account.accountId} is missing botToken.`);
     }
 
     const msg = buildOutboundMessage({ args, account, operation });
@@ -640,8 +633,8 @@ class OpenClawWechatBridge {
       ok: true,
       status: "sent",
       provider: "wechat",
-      openclawChannel: openClawWeixinChannel,
-      openclawAccountId: account.accountId,
+      wechatTransport: wechatTransport,
+      wechatBotId: account.accountId,
       recipientRef: msg.to_user_id,
       contextToken: msg.context_token,
       outboundId: msg.client_id ?? null,
@@ -650,8 +643,8 @@ class OpenClawWechatBridge {
 
   findDeliveryAccount(args) {
     const candidates = [
-      stringValue(args.openclawAccountId),
-      stringValue(args.openclaw_account_id),
+      stringValue(args.wechatBotId),
+      stringValue(args.wechat_bot_id),
       stringValue(args.boundAccountRef),
       stringValue(args.bound_account_ref),
     ].filter(Boolean);
@@ -686,7 +679,7 @@ class OpenClawWechatBridge {
       if (this.abortController.signal.aborted) return;
       await this.pollConnectedAccounts().catch((error) => {
         process.stderr.write(
-          `[openclaw-wechat-bridge] poll failed: ${error instanceof Error ? error.message : String(error)}\n`,
+          `[gosper-wechat] poll failed: ${error instanceof Error ? error.message : String(error)}\n`,
         );
       });
       if (!this.abortController.signal.aborted) {
@@ -791,8 +784,8 @@ function publicBindSession(session, state) {
     ok: true,
     provider: "wechat",
     tool: "WECHAT",
-    openclawChannel: openClawWeixinChannel,
-    openclaw_channel: openClawWeixinChannel,
+    wechatTransport: wechatTransport,
+    wechat_transport: wechatTransport,
     sessionId: sessionKey,
     sessionKey,
     session_key: sessionKey,
@@ -819,8 +812,8 @@ function publicBindSession(session, state) {
     wechatUserRef: userId ?? null,
     wechat_user_ref: userId ?? null,
     ilink_user_id: userId ?? null,
-    openclawAccountId: accountId ?? stringValue(account?.accountId) ?? null,
-    openclaw_account_id: accountId ?? stringValue(account?.accountId) ?? null,
+    wechatBotId: accountId ?? stringValue(account?.accountId) ?? null,
+    wechat_bot_id: accountId ?? stringValue(account?.accountId) ?? null,
     ilink_bot_id: accountId ?? stringValue(account?.accountId) ?? null,
     boundAccountRef: accountId ?? stringValue(account?.accountId) ?? null,
     bound_account_ref: accountId ?? stringValue(account?.accountId) ?? null,
@@ -857,8 +850,8 @@ function bindCallbackBody({ session, account }) {
   const body = {
     provider: "wechat",
     tool: "WECHAT",
-    openclawChannel: openClawWeixinChannel,
-    openclaw_channel: openClawWeixinChannel,
+    wechatTransport: wechatTransport,
+    wechat_transport: wechatTransport,
     sessionId: sessionKey,
     sessionKey,
     session_key: sessionKey,
@@ -871,8 +864,8 @@ function bindCallbackBody({ session, account }) {
     wechatUserRef: userId,
     wechat_user_ref: userId,
     ilink_user_id: userId,
-    openclawAccountId: accountId,
-    openclaw_account_id: accountId,
+    wechatBotId: accountId,
+    wechat_bot_id: accountId,
     boundAccountRef: accountId,
     bound_account_ref: accountId,
     ilink_bot_id: accountId,
@@ -912,10 +905,10 @@ function inboundTriggerBody({ account, message, triggerContext }) {
   const sessionId = stringValue(message.session_id);
   const publicTriggerContext = stripUndefined({
     ...triggerContext,
-    openclawChannel: openClawWeixinChannel,
-    openclaw_channel: openClawWeixinChannel,
-    OriginatingChannel: openClawWeixinChannel,
-    Provider: openClawWeixinChannel,
+    wechatTransport: wechatTransport,
+    wechat_transport: wechatTransport,
+    OriginatingTransport: wechatTransport,
+    Provider: wechatTransport,
   });
   const publicMessage = stripUndefined({
     ...message,
@@ -928,10 +921,10 @@ function inboundTriggerBody({ account, message, triggerContext }) {
     ...publicTriggerContext,
     type: "message.received",
     provider: "wechat",
-    openclawChannel: openClawWeixinChannel,
-    openclaw_channel: openClawWeixinChannel,
-    openclawAccountId: account.accountId,
-    openclaw_account_id: account.accountId,
+    wechatTransport: wechatTransport,
+    wechat_transport: wechatTransport,
+    wechatBotId: account.accountId,
+    wechat_bot_id: account.accountId,
     boundAccountRef: account.accountId,
     bound_account_ref: account.accountId,
     accountRef: senderRef,
@@ -974,11 +967,11 @@ function inboundTriggerBody({ account, message, triggerContext }) {
     From: senderRef,
     To: recipientRef,
     AccountId: account.accountId,
-    OriginatingChannel: openClawWeixinChannel,
+    OriginatingTransport: wechatTransport,
     OriginatingTo: senderRef,
     MessageSid: messageRef,
     Timestamp: message.create_time_ms,
-    Provider: openClawWeixinChannel,
+    Provider: wechatTransport,
     triggerContext: publicTriggerContext,
     trigger_context: publicTriggerContext,
     context: publicTriggerContext,
@@ -986,9 +979,9 @@ function inboundTriggerBody({ account, message, triggerContext }) {
     payload: {
       msg: publicMessage,
       triggerContext: publicTriggerContext,
-      openclawChannel: openClawWeixinChannel,
-      openclaw_channel: openClawWeixinChannel,
-      Provider: openClawWeixinChannel,
+      wechatTransport: wechatTransport,
+      wechat_transport: wechatTransport,
+      Provider: wechatTransport,
     },
   });
 }
@@ -1093,8 +1086,8 @@ function buildOutboundMessage({ args, account, operation }) {
     from_user_id:
       stringValue(provided?.from_user_id) ??
       stringValue(args.from_user_id) ??
-      stringValue(args.openclawAccountId) ??
-      stringValue(args.openclaw_account_id) ??
+      stringValue(args.wechatBotId) ??
+      stringValue(args.wechat_bot_id) ??
       stringValue(account.accountId) ??
       "",
     to_user_id: recipientRef,
@@ -1253,14 +1246,14 @@ function buildIlinkHeaders(config, input) {
     AuthorizationType: "ilink_bot_token",
     "X-WECHAT-UIN": randomWechatUin(),
     "iLink-App-Id": config.ilinkAppId,
-    "iLink-App-ClientVersion": String(buildClientVersion(config.channelVersion)),
+    "iLink-App-ClientVersion": String(buildClientVersion(config.wechatClientVersion)),
     authorization: input.token ? `Bearer ${input.token}` : undefined,
   });
 }
 
 function baseInfo(config) {
   return {
-    channel_version: config.channelVersion,
+    channel_version: config.wechatClientVersion,
     bot_agent: config.botAgent,
   };
 }
@@ -1314,11 +1307,11 @@ function authHeaderFromAuth(auth) {
   return type.toLowerCase() === "bearer" ? `Bearer ${token}` : token;
 }
 
-function openClawContextFrom(context) {
+function wechatContextFrom(context) {
   return {
     ...context,
-    openclawChannel: openClawWeixinChannel,
-    openclaw_channel: openClawWeixinChannel,
+    wechatTransport: wechatTransport,
+    wechat_transport: wechatTransport,
   };
 }
 
@@ -1429,7 +1422,7 @@ function parseStateEnvelope(text, stateSecret) {
   if (envelope.encrypted === true) {
     if (!stateSecret) {
       throw new Error(
-        "OpenClaw WeChat bridge state is encrypted but OPENCLAW_WECHAT_BRIDGE_STATE_SECRET is not configured.",
+        "Gosper WeChat bridge state is encrypted but GOSPER_WECHAT_BRIDGE_STATE_SECRET is not configured.",
       );
     }
     return parseJsonObject(decryptStateEnvelope(envelope, stateSecret)) ?? {};
@@ -1461,7 +1454,7 @@ function encryptedStateEnvelope(plaintext, stateSecret) {
 
 function decryptStateEnvelope(envelope, stateSecret) {
   if (envelope.algorithm !== "aes-256-gcm") {
-    throw new Error("Unsupported OpenClaw WeChat bridge state encryption algorithm.");
+    throw new Error("Unsupported Gosper WeChat bridge state encryption algorithm.");
   }
   const iv = Buffer.from(stringValue(envelope.iv) ?? "", "base64");
   const tag = Buffer.from(stringValue(envelope.tag) ?? "", "base64");
@@ -1475,7 +1468,7 @@ function decryptStateEnvelope(envelope, stateSecret) {
 
 function stateKey(stateSecret) {
   return createHash("sha256")
-    .update("gosper-openclaw-wechat-bridge-state:", "utf8")
+    .update("gosper-wechat-bridge-state:", "utf8")
     .update(stateSecret, "utf8")
     .digest();
 }
@@ -1529,11 +1522,10 @@ function isAbortError(error) {
 }
 
 function bridgeUsage() {
-  return `Usage: gosper-openclaw-wechat start -- [options]
+  return `Usage: gosper-wechat start -- [options]
 
-Runs the Gosper OpenClaw WeChat transport bridge. This process bypasses
-OpenClaw's LLM/channel runtime and only uses iLink QR, getupdates, and
-sendmessage transport APIs.
+Runs the Gosper WeChat transport bridge. It uses iLink QR, getupdates,
+and sendmessage APIs, then forwards WeChat messages to Gosper.
 
 Options:
   --dry-run                         Print sanitized config and contract.
@@ -1550,11 +1542,11 @@ Options:
   -h, --help                        Show this help.
 
 Environment:
-  OPENCLAW_WECHAT_BRIDGE_TOKEN or GOSPER_WECHAT_TOOL_TOKEN
-  OPENCLAW_WECHAT_GOSPER_BASE_URL or GOSPER_APP_BASE_URL
-  OPENCLAW_WECHAT_GOSPER_TRIGGER_SECRET or GOSPER_WECHAT_TRIGGER_SECRET
-  OPENCLAW_WECHAT_BRIDGE_STATE_PATH
-  OPENCLAW_WECHAT_ILINK_BASE_URL
+  GOSPER_WECHAT_TOOL_TOKEN
+  GOSPER_APP_BASE_URL
+  GOSPER_WECHAT_TRIGGER_SECRET
+  GOSPER_WECHAT_BRIDGE_STATE_PATH
+  GOSPER_WECHAT_ILINK_BASE_URL
 `;
 }
 
