@@ -2,7 +2,7 @@
 
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,6 +11,9 @@ const command = args[0] ?? "help";
 const commandArgs = args.slice(1);
 
 switch (command) {
+  case "quickstart":
+    quickstart(commandArgs);
+    break;
   case "env":
     printEnv(commandArgs);
     break;
@@ -32,39 +35,68 @@ switch (command) {
 }
 
 function printEnv(inputArgs) {
-  const gosperBaseUrl = readOption(inputArgs, "gosper-base-url");
-  const bridgeBaseUrl = readOption(inputArgs, "bridge-base-url");
-  const ilinkBaseUrl =
-    readOption(inputArgs, "ilink-base-url") ?? "https://ilinkai.weixin.qq.com";
+  const env = buildGeneratedEnv(inputArgs, "env");
 
-  if (!gosperBaseUrl || !bridgeBaseUrl) {
+  process.stdout.write(`${env.bridgeBlock}\n${env.gosperBlock}`);
+}
+
+function quickstart(inputArgs) {
+  const env = buildGeneratedEnv(inputArgs, "quickstart");
+  const dryRun = inputArgs.includes("--dry-run");
+  const noStart = inputArgs.includes("--no-start");
+  const force = inputArgs.includes("--force");
+  const packageRoot = findPackageRoot();
+  const envFile = resolve(
+    packageRoot,
+    readOption(inputArgs, "env-file") ?? ".env",
+  );
+  const composeFile = resolve(packageRoot, "deploy/compose.yaml");
+
+  if (!dryRun && existsSync(envFile) && !force) {
     process.stderr.write(
-      "env requires --gosper-base-url and --bridge-base-url.\n\n" + helpText(),
+      `${envFile} already exists. Pass --force to overwrite it.\n`,
     );
-    process.exit(2);
+    process.exit(1);
   }
 
-  const bridgeToken = randomSecret();
-  const triggerSecret = randomSecret();
-  const stateSecret = randomSecret();
+  if (dryRun) {
+    process.stdout.write(`# Would write ${envFile}\n${env.bridgeBlock}\n`);
+    process.stdout.write(env.gosperBlock);
+    process.stdout.write(
+      `\n# Would run\n` +
+        `docker compose -f ${composeFile} --env-file ${envFile} up -d --build\n`,
+    );
+    return;
+  }
 
-  process.stdout.write(`# Bridge host env
-OPENCLAW_WECHAT_BRIDGE_TOKEN=${bridgeToken}
-OPENCLAW_WECHAT_GOSPER_BASE_URL=${trimTrailingSlashes(gosperBaseUrl)}
-OPENCLAW_WECHAT_GOSPER_TRIGGER_SECRET=${triggerSecret}
-OPENCLAW_WECHAT_BRIDGE_STATE_PATH=/data/openclaw-wechat/state.json
-OPENCLAW_WECHAT_BRIDGE_STATE_SECRET=${stateSecret}
-OPENCLAW_WECHAT_ILINK_BASE_URL=${trimTrailingSlashes(ilinkBaseUrl)}
-OPENCLAW_WECHAT_BOT_TYPE=3
-OPENCLAW_WECHAT_POLL_INTERVAL_MS=2000
-OPENCLAW_WECHAT_LONG_POLL_TIMEOUT_MS=35000
+  writeFileSync(envFile, env.bridgeBlock);
+  process.stdout.write(`Wrote bridge env: ${envFile}\n\n`);
+  process.stdout.write(env.gosperBlock);
 
-# Gosper Vercel env
-GOSPER_WECHAT_TOOL_BASE_URL=${trimTrailingSlashes(bridgeBaseUrl)}
-GOSPER_WECHAT_TOOL_TOKEN=${bridgeToken}
-GOSPER_WECHAT_TRIGGER_SECRET=${triggerSecret}
-GOSPER_APP_BASE_URL=${trimTrailingSlashes(gosperBaseUrl)}
-`);
+  if (noStart) {
+    process.stdout.write("\nSkipped Docker start because --no-start was passed.\n");
+    return;
+  }
+
+  const dockerArgs = [
+    "compose",
+    "-f",
+    composeFile,
+    "--env-file",
+    envFile,
+    "up",
+    "-d",
+    "--build"
+  ];
+  process.stdout.write(`\nStarting bridge with: docker ${dockerArgs.join(" ")}\n`);
+  const child = spawn("docker", dockerArgs, {
+    stdio: "inherit",
+    cwd: packageRoot
+  });
+  child.on("exit", (code, signal) => {
+    if (signal) process.kill(process.pid, signal);
+    process.exit(code ?? 0);
+  });
 }
 
 function doctor(inputArgs) {
@@ -142,6 +174,52 @@ function findBridgeScript() {
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
+function findPackageRoot() {
+  return resolve(dirname(fileURLToPath(import.meta.url)), "..");
+}
+
+function buildGeneratedEnv(inputArgs, commandName) {
+  const gosperBaseUrl = readOption(inputArgs, "gosper-base-url");
+  const bridgeBaseUrl = readOption(inputArgs, "bridge-base-url");
+  const ilinkBaseUrl =
+    readOption(inputArgs, "ilink-base-url") ?? "https://ilinkai.weixin.qq.com";
+
+  if (!gosperBaseUrl || !bridgeBaseUrl) {
+    process.stderr.write(
+      `${commandName} requires --gosper-base-url and --bridge-base-url.\n\n` +
+        helpText(),
+    );
+    process.exit(2);
+  }
+
+  const bridgeToken = randomSecret();
+  const triggerSecret = randomSecret();
+  const stateSecret = randomSecret();
+  const normalizedGosperBaseUrl = trimTrailingSlashes(gosperBaseUrl);
+  const normalizedBridgeBaseUrl = trimTrailingSlashes(bridgeBaseUrl);
+  const normalizedIlinkBaseUrl = trimTrailingSlashes(ilinkBaseUrl);
+
+  return {
+    bridgeBlock: `# Bridge host env
+OPENCLAW_WECHAT_BRIDGE_TOKEN=${bridgeToken}
+OPENCLAW_WECHAT_GOSPER_BASE_URL=${normalizedGosperBaseUrl}
+OPENCLAW_WECHAT_GOSPER_TRIGGER_SECRET=${triggerSecret}
+OPENCLAW_WECHAT_BRIDGE_STATE_PATH=/data/openclaw-wechat/state.json
+OPENCLAW_WECHAT_BRIDGE_STATE_SECRET=${stateSecret}
+OPENCLAW_WECHAT_ILINK_BASE_URL=${normalizedIlinkBaseUrl}
+OPENCLAW_WECHAT_BOT_TYPE=3
+OPENCLAW_WECHAT_POLL_INTERVAL_MS=2000
+OPENCLAW_WECHAT_LONG_POLL_TIMEOUT_MS=35000
+`,
+    gosperBlock: `# Gosper Vercel env
+GOSPER_WECHAT_TOOL_BASE_URL=${normalizedBridgeBaseUrl}
+GOSPER_WECHAT_TOOL_TOKEN=${bridgeToken}
+GOSPER_WECHAT_TRIGGER_SECRET=${triggerSecret}
+GOSPER_APP_BASE_URL=${normalizedGosperBaseUrl}
+`
+  };
+}
+
 function readOption(inputArgs, name) {
   const flag = `--${name}`;
   const index = inputArgs.indexOf(flag);
@@ -173,14 +251,22 @@ function isHttpsOrigin(value) {
 
 function helpText() {
   return `Usage:
+  gosper-openclaw-wechat quickstart --gosper-base-url <url> --bridge-base-url <url>
   gosper-openclaw-wechat env --gosper-base-url <url> --bridge-base-url <url>
   gosper-openclaw-wechat doctor [--json]
   gosper-openclaw-wechat start [bridge options]
 
 Commands:
+  quickstart Generate .env, print Gosper env, and start Docker Compose.
   env       Generate matching bridge-host and Gosper Vercel env blocks.
   doctor    Check bridge-host env for the Gosper OpenClaw WeChat bridge.
   start     Start the resident iLink transport bridge.
+
+Quickstart options:
+  --dry-run     Print generated files and docker command without writing.
+  --no-start    Write .env and print Gosper env, but do not run Docker.
+  --force       Overwrite an existing .env file.
+  --env-file    Bridge env file path relative to this package. Defaults to .env.
 
 Notes:
   This package is an OpenClaw plugin package, but it does not register

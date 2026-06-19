@@ -1,5 +1,7 @@
 # OpenClaw WeChat 连接 Gosper 配置说明
 
+完整使用手册见：[usage.zh-CN.md](./usage.zh-CN.md)。
+
 ## 最小流程
 
 1. 部署 `openclaw-wechat` bridge 到常驻 host。

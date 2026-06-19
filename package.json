@@ -21,6 +21,7 @@
   "scripts": {
     "bridge": "node src/openclaw-wechat-bridge.mjs",
     "start": "node src/openclaw-wechat-bridge.mjs",
+    "quickstart": "node bin/gosper-openclaw-wechat.mjs quickstart",
     "env": "node bin/gosper-openclaw-wechat.mjs env",
     "doctor": "node bin/gosper-openclaw-wechat.mjs doctor",
     "test": "vitest run"
