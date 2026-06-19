@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
-    "gosper-wechat": "bin/gosper-wechat.mjs"
+    "gosper-wechat": "bin/gosper-wechat.ts"
   },
   "files": [
     "bin/",
@@ -18,18 +18,22 @@
     "LICENSE"
   ],
   "scripts": {
-    "bridge": "node src/gosper-wechat-bridge.mjs",
-    "start": "node src/gosper-wechat-bridge.mjs",
-    "quickstart": "node bin/gosper-wechat.mjs quickstart",
-    "env": "node bin/gosper-wechat.mjs env",
-    "doctor": "node bin/gosper-wechat.mjs doctor",
+    "bridge": "tsx src/gosper-wechat-bridge.ts",
+    "start": "tsx src/gosper-wechat-bridge.ts",
+    "quickstart": "tsx bin/gosper-wechat.ts quickstart",
+    "env": "tsx bin/gosper-wechat.ts env",
+    "doctor": "tsx bin/gosper-wechat.ts doctor",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
+    "tsx": "^4.21.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/node": "^26.0.0",
+    "typescript": "^5.9.3",
     "vitest": "^4.1.8"
   },
   "engines": {

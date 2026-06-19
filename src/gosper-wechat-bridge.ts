@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S node --import tsx
 
 import {
   createCipheriv,
@@ -15,14 +15,16 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 
-import { loadRuntimeEnv } from "./lib/env-file.mjs";
+import { loadRuntimeEnv } from "./lib/env-file.ts";
 import {
   createOpsEnvReader,
   normalizeBaseUrl,
   normalizeOptionalBaseUrl,
   readPositiveIntegerValue,
   readStringValue as stringValue,
-} from "./lib/ops-values.mjs";
+} from "./lib/ops-values.ts";
+
+type AnyRecord = Record<string, any>;
 
 const wechatTransport = "ilink-wechat";
 const defaultBridgeHost = "127.0.0.1";
@@ -279,7 +281,12 @@ function bridgeContract() {
 }
 
 class JsonStateStore {
-  constructor(path, input = {}) {
+  path: string;
+  stateSecret: string | null;
+  state: AnyRecord;
+  saveChain: Promise<void>;
+
+  constructor(path: string, input: AnyRecord = {}) {
     this.path = path;
     this.stateSecret = input.stateSecret ?? null;
     this.state = defaultState();
@@ -329,7 +336,14 @@ function defaultState() {
 }
 
 class GosperWechatBridge {
-  constructor(input) {
+  config: AnyRecord;
+  store: JsonStateStore;
+  server: ReturnType<typeof createServer>;
+  pollTimer: ReturnType<typeof setTimeout> | null;
+  polling: boolean;
+  abortController: AbortController;
+
+  constructor(input: { config: AnyRecord; store: JsonStateStore }) {
     this.config = input.config;
     this.store = input.store;
     this.server = createServer((req, res) => {
@@ -346,7 +360,7 @@ class GosperWechatBridge {
   }
 
   async listen() {
-    await new Promise((resolve) => {
+    await new Promise<void>((resolve) => {
       this.server.listen(this.config.port, this.config.host, resolve);
     });
     const address = this.server.address();
@@ -370,7 +384,7 @@ class GosperWechatBridge {
   async close() {
     this.abortController.abort();
     if (this.pollTimer) clearTimeout(this.pollTimer);
-    await new Promise((resolve) => this.server.close(() => resolve()));
+    await new Promise<void>((resolve) => this.server.close(() => resolve()));
   }
 
   async handleRequest(req, res) {
@@ -381,6 +395,7 @@ class GosperWechatBridge {
         mode: "gosper_wechat_transport",
         transport: wechatTransport,
         accounts: Object.keys(this.store.state.accounts).length,
+        owners: ownerCount(this.store.state.accounts),
         stateEncrypted: Boolean(this.store.stateSecret),
       });
       return;
@@ -413,13 +428,13 @@ class GosperWechatBridge {
       case "create_bind_session":
         return this.createBindSession(args, context);
       case "get_bind_session":
-        return this.getBindSession(args);
+        return this.getBindSession(args, context);
       case "submit_bind_verification":
-        return this.submitBindVerification(args);
+        return this.submitBindVerification(args, context);
       case "send_supervisor_reply":
-        return this.sendWechatMessage(args, "send_supervisor_reply");
+        return this.sendWechatMessage(args, context, "send_supervisor_reply");
       case "send_inbox_item":
-        return this.sendWechatMessage(args, "send_inbox_item");
+        return this.sendWechatMessage(args, context, "send_inbox_item");
       default:
         throw new Error(`Unknown WeChat bridge operation ${op ?? ""}.`);
     }
@@ -453,6 +468,12 @@ class GosperWechatBridge {
       asRecord(args.bindCallbackContext) ??
       asRecord(args.bind_callback_context) ??
       triggerContext;
+    const owner = ownerIdentityFrom(
+      args,
+      context,
+      triggerContext,
+      bindCallbackContext,
+    );
 
     const qr = await fetchIlinkQrCode({
       config: this.config,
@@ -474,6 +495,10 @@ class GosperWechatBridge {
       bindCallbackUrl,
       bindCallbackAuth,
       bindCallbackContext,
+      owner,
+      ownerKey: owner?.ownerKey ?? null,
+      organizationId: owner?.organizationId ?? null,
+      userId: owner?.userId ?? null,
       bindCallbackSentAt: null,
       lastStatusResponse: null,
     };
@@ -482,8 +507,8 @@ class GosperWechatBridge {
     return publicBindSession(session, this.store.state);
   }
 
-  async getBindSession(args) {
-    const session = this.readBindSession(args);
+  async getBindSession(args, context) {
+    const session = this.readBindSession(args, context);
     if (bindSessionExpired(session)) {
       session.status = "expired";
       await this.store.save();
@@ -496,8 +521,8 @@ class GosperWechatBridge {
     return this.updateBindSessionFromStatus(session, status);
   }
 
-  async submitBindVerification(args) {
-    const session = this.readBindSession(args);
+  async submitBindVerification(args, context) {
+    const session = this.readBindSession(args, context);
     const verifyCode =
       stringValue(args.verifyCode) ?? stringValue(args.verify_code);
     if (!verifyCode) throw new Error("submit_bind_verification requires verifyCode.");
@@ -509,7 +534,7 @@ class GosperWechatBridge {
     return this.updateBindSessionFromStatus(session, status);
   }
 
-  readBindSession(args) {
+  readBindSession(args, context) {
     const sessionKey =
       stringValue(args.sessionId) ??
       stringValue(args.sessionKey) ??
@@ -517,6 +542,15 @@ class GosperWechatBridge {
     if (!sessionKey) throw new Error("WeChat bind operation requires sessionId.");
     const session = asRecord(this.store.state.bindSessions[sessionKey]);
     if (!session) throw new Error(`Unknown WeChat bind session ${sessionKey}.`);
+    const requestOwner = ownerIdentityFrom(args, context);
+    const sessionOwner = ownerIdentityFrom(session.owner, session);
+    if (
+      requestOwner &&
+      sessionOwner &&
+      requestOwner.ownerKey !== sessionOwner.ownerKey
+    ) {
+      throw new Error("WeChat bind session belongs to a different Gosper user.");
+    }
     return session;
   }
 
@@ -556,11 +590,37 @@ class GosperWechatBridge {
     if (!accountId) {
       return null;
     }
-    const previous = asRecord(this.store.state.accounts[accountId]) ?? {};
+    const owner = ownerIdentityFrom(
+      session.owner,
+      session,
+      session.bindCallbackContext,
+      session.triggerContext,
+    );
+    const previousEntry = findAccountEntryByAccountId(
+      this.store.state.accounts,
+      accountId,
+      owner,
+    );
+    const previous = previousEntry?.account ?? {};
     const next = {
       ...previous,
       accountId,
       wechatBotId: accountId,
+      owner,
+      ownerKey: owner?.ownerKey ?? stringValue(previous.ownerKey) ?? null,
+      organizationId:
+        owner?.organizationId ?? stringValue(previous.organizationId) ?? null,
+      organization_id:
+        owner?.organizationId ??
+        stringValue(previous.organization_id) ??
+        stringValue(previous.organizationId) ??
+        null,
+      userId: owner?.userId ?? stringValue(previous.userId) ?? null,
+      user_id:
+        owner?.userId ??
+        stringValue(previous.user_id) ??
+        stringValue(previous.userId) ??
+        null,
       ilinkUserId: userId ?? stringValue(previous.ilinkUserId) ?? null,
       botToken: botToken ?? stringValue(previous.botToken) ?? null,
       baseUrl:
@@ -582,7 +642,15 @@ class GosperWechatBridge {
       lastContextToken: stringValue(status.context_token) ?? stringValue(status.contextToken) ?? stringValue(previous.lastContextToken) ?? null,
       lastRecipientRef: userId ?? stringValue(previous.lastRecipientRef) ?? null,
     };
-    this.store.state.accounts[accountId] = next;
+    const nextKey = accountStorageKey(accountId, owner);
+    this.store.state.accounts[nextKey] = next;
+    if (
+      previousEntry &&
+      previousEntry.key !== nextKey &&
+      (sameAccountOwner(previous, owner) || accountOwnerAbsent(previous))
+    ) {
+      delete this.store.state.accounts[previousEntry.key];
+    }
     return next;
   }
 
@@ -599,8 +667,9 @@ class GosperWechatBridge {
     session.bindCallbackSentAt = new Date().toISOString();
   }
 
-  async sendWechatMessage(args, operation) {
-    const account = this.findDeliveryAccount(args);
+  async sendWechatMessage(args, context, operation) {
+    const owner = ownerIdentityFrom(args, context);
+    const account = this.findDeliveryAccount(args, context);
     if (!account) throw new Error("No connected WeChat account is available.");
     if (!stringValue(account.botToken)) {
       throw new Error(`WeChat account ${account.accountId} is missing botToken.`);
@@ -635,13 +704,17 @@ class GosperWechatBridge {
       provider: "wechat",
       wechatTransport: wechatTransport,
       wechatBotId: account.accountId,
+      ownerScoped: Boolean(owner),
+      organizationId: owner?.organizationId ?? stringValue(account.organizationId) ?? null,
+      userId: owner?.userId ?? stringValue(account.userId) ?? null,
       recipientRef: msg.to_user_id,
       contextToken: msg.context_token,
       outboundId: msg.client_id ?? null,
     };
   }
 
-  findDeliveryAccount(args) {
+  findDeliveryAccount(args, context) {
+    const owner = ownerIdentityFrom(args, context);
     const candidates = [
       stringValue(args.wechatBotId),
       stringValue(args.wechat_bot_id),
@@ -649,7 +722,11 @@ class GosperWechatBridge {
       stringValue(args.bound_account_ref),
     ].filter(Boolean);
     for (const candidate of candidates) {
-      const account = asRecord(this.store.state.accounts[candidate]);
+      const account = findAccountByAccountId(
+        this.store.state.accounts,
+        candidate,
+        owner,
+      );
       if (account) return account;
     }
     const accountRef =
@@ -658,8 +735,7 @@ class GosperWechatBridge {
       stringValue(args.recipientRef) ??
       stringValue(args.to_user_id);
     if (accountRef) {
-      for (const account of Object.values(this.store.state.accounts)) {
-        const record = asRecord(account);
+      for (const record of accountRecordsForOwner(this.store.state.accounts, owner)) {
         if (
           stringValue(record?.ilinkUserId) === accountRef ||
           stringValue(record?.lastRecipientRef) === accountRef
@@ -668,10 +744,7 @@ class GosperWechatBridge {
         }
       }
     }
-    return Object.values(this.store.state.accounts)
-      .map((account) => asRecord(account))
-      .filter(Boolean)
-      .sort((a, b) => String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")))[0] ?? null;
+    return latestConnectedAccountForOwner(this.store.state.accounts, owner);
   }
 
   startPolling() {
@@ -763,13 +836,19 @@ class GosperWechatBridge {
 
 function publicBindSession(session, state) {
   const status = asRecord(session.lastStatusResponse) ?? {};
+  const owner = ownerIdentityFrom(
+    session.owner,
+    session,
+    session.bindCallbackContext,
+    session.triggerContext,
+  );
   const accountId =
     stringValue(status.ilink_bot_id) ??
     stringValue(status.botId) ??
     stringValue(status.bot_id);
-  const fallbackAccount = uniqueConnectedAccount(state.accounts);
+  const fallbackAccount = uniqueConnectedAccount(state.accounts, owner);
   const account =
-    (accountId ? asRecord(state.accounts[accountId]) : null) ??
+    (accountId ? findAccountByAccountId(state.accounts, accountId, owner) : null) ??
     fallbackAccount;
   const userId =
     stringValue(status.ilink_user_id) ??
@@ -819,6 +898,12 @@ function publicBindSession(session, state) {
     bound_account_ref: accountId ?? stringValue(account?.accountId) ?? null,
     contextToken: stringValue(status.contextToken) ?? stringValue(status.context_token) ?? stringValue(account?.lastContextToken) ?? null,
     context_token: stringValue(status.context_token) ?? stringValue(status.contextToken) ?? stringValue(account?.lastContextToken) ?? null,
+    ownerScoped: Boolean(owner),
+    owner_scoped: Boolean(owner),
+    organizationId: owner?.organizationId ?? stringValue(account?.organizationId) ?? null,
+    organization_id: owner?.organizationId ?? stringValue(account?.organization_id) ?? null,
+    userId: owner?.userId ?? stringValue(account?.userId) ?? null,
+    user_id: owner?.userId ?? stringValue(account?.user_id) ?? null,
     conversationRef: sessionKey,
     conversation_ref: sessionKey,
     messageRef: sessionKey,
@@ -832,14 +917,178 @@ function publicBindSession(session, state) {
   };
 }
 
-function uniqueConnectedAccount(accounts) {
-  const connected = Object.values(asRecord(accounts) ?? {})
-    .map((account) => asRecord(account))
-    .filter(
-      (account) =>
-        account && stringValue(account.status) === "connected",
-    );
+function uniqueConnectedAccount(accounts, owner) {
+  const connected = accountRecordsForOwner(accounts, owner).filter(
+    (account) => stringValue(account.status) === "connected",
+  );
   return connected.length === 1 ? connected[0] : null;
+}
+
+function latestConnectedAccountForOwner(accounts, owner) {
+  const connected = accountRecordsForOwner(accounts, owner)
+    .filter((account) => stringValue(account.status) === "connected")
+    .sort((a, b) => String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")));
+  if (owner) {
+    if (connected.length) return connected[0];
+    const legacyConnected = accountRecords(accounts)
+      .map((entry) => entry.account)
+      .filter(
+        (account) =>
+          accountOwnerAbsent(account) &&
+          stringValue(account.status) === "connected",
+      );
+    return legacyConnected.length === 1 ? legacyConnected[0] : null;
+  }
+  return connected.length === 1 ? connected[0] : null;
+}
+
+function findAccountByAccountId(accounts, accountId, owner) {
+  return findAccountEntryByAccountId(accounts, accountId, owner)?.account ?? null;
+}
+
+function findAccountEntryByAccountId(accounts, accountId, owner) {
+  const id = stringValue(accountId);
+  if (!id) return null;
+  const matches = accountRecords(accounts).filter(({ key, account }) =>
+    [
+      key,
+      stringValue(account.accountId),
+      stringValue(account.wechatBotId),
+      stringValue(account.wechat_bot_id),
+      stringValue(account.ilink_bot_id),
+      stringValue(account.boundAccountRef),
+      stringValue(account.bound_account_ref),
+    ].some((candidate) => candidate === id),
+  );
+  if (!matches.length) return null;
+
+  if (owner) {
+    const ownerMatches = matches.filter(({ account }) =>
+      sameAccountOwner(account, owner),
+    );
+    if (ownerMatches.length === 1) return ownerMatches[0];
+    if (ownerMatches.length > 1) {
+      return mostRecentlyUpdatedEntry(ownerMatches);
+    }
+    const legacyMatches = matches.filter(({ account }) => accountOwnerAbsent(account));
+    if (legacyMatches.length === 1) return legacyMatches[0];
+  }
+
+  if (matches.length === 1) return matches[0];
+  return null;
+}
+
+function accountRecordsForOwner(accounts, owner) {
+  const records = accountRecords(accounts).map((entry) => entry.account);
+  if (!owner) return records;
+  return records.filter((account) => sameAccountOwner(account, owner));
+}
+
+function accountRecords(accounts) {
+  return Object.entries(asRecord(accounts) ?? {})
+    .map(([key, account]) => ({
+      key,
+      account: asRecord(account),
+    }))
+    .filter((entry) => entry.account);
+}
+
+function ownerCount(accounts) {
+  return new Set(
+    accountRecords(accounts)
+      .map(({ account }) => ownerIdentityFrom(account)?.ownerKey)
+      .filter(Boolean),
+  ).size;
+}
+
+function mostRecentlyUpdatedEntry(entries) {
+  return entries
+    .slice()
+    .sort((a, b) =>
+      String(b.account.updatedAt ?? "").localeCompare(String(a.account.updatedAt ?? "")),
+    )[0] ?? null;
+}
+
+function accountStorageKey(accountId, owner) {
+  const id = stringValue(accountId);
+  if (!id) throw new Error("WeChat account storage requires accountId.");
+  return owner?.ownerKey ? `owner:${owner.ownerKey}:${id}` : id;
+}
+
+function sameAccountOwner(account, owner) {
+  if (!owner) return true;
+  const accountOwner = ownerIdentityFrom(account);
+  if (!accountOwner) return false;
+  return accountOwner.ownerKey === owner.ownerKey;
+}
+
+function accountOwnerAbsent(account) {
+  return !ownerIdentityFrom(account);
+}
+
+function ownerIdentityFrom(...values) {
+  for (const value of values) {
+    const owner = ownerIdentityFromRecord(asRecord(value), 0, new Set());
+    if (owner) return owner;
+  }
+  return null;
+}
+
+function ownerIdentityFromRecord(record, depth, seen) {
+  if (!record || depth > 3 || seen.has(record)) return null;
+  seen.add(record);
+
+  const direct = directOwnerIdentity(record);
+  if (direct) return direct;
+
+  for (const key of [
+    "owner",
+    "context",
+    "triggerContext",
+    "trigger_context",
+    "bindCallbackContext",
+    "bind_callback_context",
+    "payload",
+    "data",
+    "arguments",
+    "args",
+  ]) {
+    const nested = ownerIdentityFromRecord(asRecord(record[key]), depth + 1, seen);
+    if (nested) return nested;
+  }
+
+  return null;
+}
+
+function directOwnerIdentity(record) {
+  const organizationId =
+    stringValue(record.organizationId) ??
+    stringValue(record.organization_id) ??
+    stringValue(record.orgId) ??
+    stringValue(record.org_id) ??
+    stringValue(record.teamId) ??
+    stringValue(record.team_id);
+  const userId =
+    stringValue(record.userId) ??
+    stringValue(record.user_id) ??
+    stringValue(record.gosperUserId) ??
+    stringValue(record.gosper_user_id);
+  if (!organizationId || !userId) return null;
+  return {
+    organizationId,
+    userId,
+    ownerKey: ownerKey({ organizationId, userId }),
+  };
+}
+
+function ownerKey(owner) {
+  return createHash("sha256")
+    .update("gosper-wechat-owner:", "utf8")
+    .update(owner.organizationId, "utf8")
+    .update("\0", "utf8")
+    .update(owner.userId, "utf8")
+    .digest("hex")
+    .slice(0, 32);
 }
 
 function bindCallbackBody({ session, account }) {
@@ -881,6 +1130,12 @@ function bindCallbackBody({ session, account }) {
     message_ref: sessionKey,
     contextToken,
     context_token: contextToken,
+    ownerScoped: Boolean(account.ownerKey),
+    owner_scoped: Boolean(account.ownerKey),
+    organizationId: stringValue(account.organizationId),
+    organization_id: stringValue(account.organization_id) ?? stringValue(account.organizationId),
+    userId: stringValue(account.userId),
+    user_id: stringValue(account.user_id) ?? stringValue(account.userId),
     bindCallbackContext: session.bindCallbackContext,
     bind_callback_context: session.bindCallbackContext,
     context: session.bindCallbackContext,
@@ -1127,7 +1382,7 @@ async function fetchIlinkQrCode({ config, localTokenList }) {
   });
 }
 
-async function pollIlinkQrStatus({ config, session, verifyCode }) {
+async function pollIlinkQrStatus({ config, session, verifyCode = undefined }) {
   let endpoint = `ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(
     stringValue(session.qrcode) ?? "",
   )}`;

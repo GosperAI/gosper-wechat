@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S node --import tsx
 
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -152,11 +152,11 @@ function doctor(inputArgs) {
 function startBridge(inputArgs) {
   const scriptPath = findBridgeScript();
   if (!scriptPath) {
-    process.stderr.write("Cannot find src/gosper-wechat-bridge.mjs.\n");
+    process.stderr.write("Cannot find src/gosper-wechat-bridge.ts.\n");
     process.exit(1);
   }
 
-  const child = spawn(process.execPath, [scriptPath, ...inputArgs], {
+  const child = spawn(process.execPath, ["--import", "tsx", scriptPath, ...inputArgs], {
     stdio: "inherit",
     env: process.env
   });
@@ -169,8 +169,8 @@ function startBridge(inputArgs) {
 function findBridgeScript() {
   const here = dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    resolve(here, "../src/gosper-wechat-bridge.mjs"),
-    resolve(process.cwd(), "src/gosper-wechat-bridge.mjs")
+    resolve(here, "../src/gosper-wechat-bridge.ts"),
+    resolve(process.cwd(), "src/gosper-wechat-bridge.ts")
   ];
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }

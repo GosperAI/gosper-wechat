@@ -4,10 +4,14 @@ import { join } from "node:path";
 
 import dotenv from "dotenv";
 
-import { parseJsonObject } from "./json-object.mjs";
-import { readStringValue as stringValue } from "./ops-values.mjs";
+import { parseJsonObject } from "./json-object.ts";
+import { readStringValue as stringValue } from "./ops-values.ts";
 
-export async function loadRuntimeEnv(options = {}) {
+type EnvRecord = Record<string, string | undefined>;
+
+export async function loadRuntimeEnv(
+  options: { cwd?: string; env?: EnvRecord } = {},
+) {
   const cwd = options.cwd ?? process.cwd();
   const processEnv = options.env ?? process.env;
   const fileEnv = {
@@ -18,14 +22,14 @@ export async function loadRuntimeEnv(options = {}) {
   return { ...fileEnv, ...processEnv };
 }
 
-export async function parseEnvFile(path) {
+export async function parseEnvFile(path: string) {
   if (!existsSync(path)) return {};
 
   const text = await readFile(path, "utf8");
   return dotenv.parse(text);
 }
 
-export async function parseVercelProjectEnv(path) {
+export async function parseVercelProjectEnv(path: string) {
   if (!existsSync(path)) return {};
 
   const project = parseJsonObject(await readFile(path, "utf8")) ?? {};

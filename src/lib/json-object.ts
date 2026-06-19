@@ -2,16 +2,21 @@ import { z } from "zod";
 
 export const jsonObjectSchema = z.object({}).passthrough();
 
-export function asJsonObject(value) {
+type JsonObjectOptions = {
+  emptyObject?: boolean;
+  invalidMessage?: string;
+};
+
+export function asJsonObject(value: unknown) {
   const result = jsonObjectSchema.safeParse(value);
   return result.success ? result.data : null;
 }
 
-export function jsonObjectValue(value) {
+export function jsonObjectValue(value: unknown) {
   return asJsonObject(value) ?? {};
 }
 
-export function parseJsonObject(text, options = {}) {
+export function parseJsonObject(text: unknown, options: JsonObjectOptions = {}) {
   const raw = String(text ?? "");
   if (!raw.trim()) return options.emptyObject ? {} : null;
 
@@ -22,7 +27,10 @@ export function parseJsonObject(text, options = {}) {
   }
 }
 
-export function parseJsonObjectOutput(text, options = {}) {
+export function parseJsonObjectOutput(
+  text: unknown,
+  options: JsonObjectOptions = {},
+) {
   const raw = typeof text === "string" ? text.trim() : "";
   if (!raw) return null;
 
@@ -35,7 +43,10 @@ export function parseJsonObjectOutput(text, options = {}) {
   }
 }
 
-export async function readJsonObjectResponse(response, options = {}) {
+export async function readJsonObjectResponse(
+  response: { text: () => Promise<string> },
+  options: JsonObjectOptions = {},
+) {
   const text = await response.text();
   if (!text) return {};
 
@@ -46,6 +57,6 @@ export async function readJsonObjectResponse(response, options = {}) {
   }
 }
 
-function invalidJsonOutputObject(message) {
+function invalidJsonOutputObject(message?: string) {
   return { ok: false, error: message ?? "Invalid JSON output." };
 }

@@ -4,6 +4,8 @@
 
 它作为常驻 Node.js 服务运行，负责微信扫码登录、`getupdates` 轮询收消息、`sendmessage` 发消息。微信入站消息会直接回调 Gosper trigger，再交给 Gosper Supervisor。
 
+一个团队只需要部署一个 `gosper-wechat` bridge。每个 Gosper 用户发起绑定时，Gosper 会把 `organizationId/userId` 放进 bridge context；bridge 会按这个 owner scope 保存 bot token、cursor 和 context token，出站回复也只会在同一个用户 scope 内选择微信账号。
+
 完整使用手册见：[docs/usage.zh-CN.md](./docs/usage.zh-CN.md)。
 
 ## 五分钟快速开始
@@ -29,6 +31,7 @@ Gosper 公开生产地址是内置默认值，不需要配置。只有自托管 
 - 使用 Gosper 公开生产地址的团队。
 - 已经能访问 iLink 微信 transport API 的团队。
 - 希望用户在 Gosper 页面扫码绑定微信，并通过微信和 Gosper Supervisor 交互。
+- 希望一个团队部署一个 bridge，但团队内每个用户绑定自己的 Gosper 账号。
 - 有一台可以长期运行 bridge 的主机。
 
 不适合：
@@ -101,6 +104,8 @@ curl -sS https://wechat-bridge.example.com/healthz
   "ok": true,
   "mode": "gosper_wechat_transport",
   "transport": "ilink-wechat",
+  "accounts": 0,
+  "owners": 0,
   "stateEncrypted": true
 }
 ```

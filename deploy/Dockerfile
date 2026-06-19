@@ -26,4 +26,4 @@ EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "const port=process.env.GOSPER_WECHAT_BRIDGE_PORT||process.env.PORT||8787; fetch('http://127.0.0.1:'+port+'/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["node", "src/gosper-wechat-bridge.mjs"]
+CMD ["npx", "tsx", "src/gosper-wechat-bridge.ts"]
