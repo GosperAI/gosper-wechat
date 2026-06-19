@@ -2,7 +2,7 @@
   "name": "@gosper/openclaw-wechat",
   "version": "0.1.0",
   "description": "OpenClaw WeChat transport bridge for Gosper",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "bin": {
     "gosper-openclaw-wechat": "bin/gosper-openclaw-wechat.mjs"
